@@ -21,7 +21,7 @@ jobs:
         with:
           token: ${{ secrets.METRICS_TOKEN }}
           filename: img/metrics.svg
-          base: header, activity, community, repositories, metadata
+          base: header, activity, community
           config_timezone: Asia/Tokyo
           repositories_affiliations: owner, collaborator, organization_member
 
