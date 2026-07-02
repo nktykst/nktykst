@@ -25,7 +25,7 @@
 </p>
 
 <p align="center">
-  <sub>機械学習の研究をしています · 深層学習 / 論文実装 · VS&nbsp;Code&nbsp;+&nbsp;uv</sub>
+  <sub>機械学習/個人開発をしています · 深層学習 / 論文実装 · VS&nbsp;Code&nbsp;+&nbsp;uv</sub>
 </p>
 
 <br/>
