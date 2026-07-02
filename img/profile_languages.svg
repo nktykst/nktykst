@@ -1,0 +1,7 @@
+<svg width="300" height="195" viewBox="0 0 300 195" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Top languages placeholder">
+  <rect x="0.5" y="0.5" width="299" height="194" rx="10" fill="#0d1117" stroke="#30363d"/>
+  <text x="25" y="45" fill="#58a6ff" font-family="Segoe UI, Ubuntu, sans-serif" font-size="18" font-weight="600">Top Languages</text>
+  <text x="25" y="95" fill="#c9d1d9" font-family="Segoe UI, Ubuntu, sans-serif" font-size="14">Populated on the first</text>
+  <text x="25" y="118" fill="#c9d1d9" font-family="Segoe UI, Ubuntu, sans-serif" font-size="14">Actions run.</text>
+  <text x="25" y="160" fill="#8b949e" font-family="Segoe UI, Ubuntu, sans-serif" font-size="12">count_private=true included.</text>
+</svg>
