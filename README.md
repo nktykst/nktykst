@@ -1,7 +1,9 @@
 <h1 align="center">Yukisato Nakata</h1>
 
 <p align="center">
-  Machine Learning Researcher
+  <a href="https://github.com/nktykst">
+    <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=400&size=20&pause=900&color=6E7681&center=true&vCenter=true&width=460&lines=Machine+Learning+Researcher;Deep+Learning+%2F+Paper+Implementation;Building+with+VS+Code+%2B+uv" alt="typing"/>
+  </a>
 </p>
 
 <p align="center">
@@ -43,4 +45,11 @@
 
 <p align="center">
   <img width="38%" src="img/metrics-languages.svg" alt="Top languages"/>
+</p>
+
+<br/>
+
+<!-- Animated contribution activity graph (public contributions) -->
+<p align="center">
+  <img width="90%" src="https://github-readme-activity-graph.vercel.app/graph?username=nktykst&bg_color=00000000&color=6E7681&line=8B949E&point=6E7681&area=true&area_color=8B949E&hide_border=true&custom_title=Contribution%20Activity" alt="Contribution activity graph"/>
 </p>
