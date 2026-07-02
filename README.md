@@ -18,6 +18,8 @@
   <img src="https://img.shields.io/badge/PyTorch-555?style=flat-square&logo=pytorch&logoColor=white&labelColor=333" alt="PyTorch"/>
   <img src="https://img.shields.io/badge/NumPy-555?style=flat-square&logo=numpy&logoColor=white&labelColor=333" alt="NumPy"/>
   <img src="https://img.shields.io/badge/pandas-555?style=flat-square&logo=pandas&logoColor=white&labelColor=333" alt="pandas"/>
+  <img src="https://img.shields.io/badge/JavaScript-555?style=flat-square&logo=javascript&logoColor=white&labelColor=333" alt="JavaScript"/>
+  <img src="https://img.shields.io/badge/TypeScript-555?style=flat-square&logo=typescript&logoColor=white&labelColor=333" alt="TypeScript"/>
   <img src="https://img.shields.io/badge/Jupyter-555?style=flat-square&logo=jupyter&logoColor=white&labelColor=333" alt="Jupyter"/>
   <img src="https://img.shields.io/badge/uv-555?style=flat-square&logo=uv&logoColor=white&labelColor=333" alt="uv"/>
   <img src="https://img.shields.io/badge/VS%20Code-555?style=flat-square&logo=visualstudiocode&logoColor=white&labelColor=333" alt="VS Code"/>
