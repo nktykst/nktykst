@@ -35,11 +35,11 @@
 ### 📊 GitHub Stats
 
 <!--
-  These SVGs are fetched from a self-hosted github-readme-stats API (Vercel)
-  and committed daily by GitHub Actions, so private-repo activity is included.
+  These SVGs are generated entirely inside GitHub Actions by lowlighter/metrics
+  and committed daily, so private-repo activity is included (no external hosting).
   Until the first Actions run succeeds, placeholder images are shown.
 -->
 <p align="center">
-  <img align="left" width="49%" src="img/profile_stats.svg" alt="GitHub stats"/>
-  <img align="left" width="49%" src="img/profile_languages.svg" alt="Top languages"/>
+  <img align="left" width="49%" src="img/metrics.svg" alt="GitHub metrics"/>
+  <img align="left" width="49%" src="img/metrics-languages.svg" alt="Top languages"/>
 </p>
