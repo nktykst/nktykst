@@ -68,5 +68,10 @@ def short_uuid(uuid: str) -> str:
     return u
 
 
+def is_vendor(uuid: str) -> bool:
+    """Bluetooth SIG が割り当てた (名前の付く) UUID でなければ True。"""
+    return uuid_name(uuid) in ("Vendor specific", "Unknown")
+
+
 def company_name(cid: int) -> str:
     return COMPANY_IDS.get(cid, f"unknown(0x{cid:04x})")

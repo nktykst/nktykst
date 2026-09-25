@@ -8,8 +8,12 @@ ble-re scan                      # 周囲のアドバタイズを一覧
 ble-re dump  <ADDR> -r           # 接続して GATT を全列挙 + 読める値を読む
 ble-re watch <ADDR> -o log.jsonl # notify/indicate を全部購読してログ
 ble-re write <ADDR> fff2 0x0101 --watch 3   # 書いて、直後の反応を 3 秒見る
-ble-re snoop btsnoop_hci.log --data-only    # Android の HCI ログを ATT レベルで時系列化
+ble-re snoop btsnoop_hci.log --data-only    # Android / iOS (.pklg) の HCI ログを ATT レベルで時系列化
+ble-re fit att.jsonl --csv app.csv -c rri   # 通知バイト列と公式アプリの CSV からフィールド配置を推定
+ble-re apk-uuids app.apk                    # 公式アプリの APK から UUID を拾う
 ```
+
+> 具体例: myBeat WHS-3 (心拍センサ) を自前アプリに繋ぐための手順は [docs/whs3.md](docs/whs3.md)。
 
 > **前提**: 解析対象は自分が所有し、解析する権利のあるデバイスに限ってください。
 
@@ -105,8 +109,8 @@ uv run ble-re dump AA:BB:CC:DD:EE:FF --json > gatt.json
 
 #### iOS
 
-Apple の Bluetooth プロファイル (Developer サイトの "Profiles and Logs") を入れて PacketLogger の `.pklg` を取得。
-`ble-re snoop` は `.pklg` 未対応なので、Wireshark で開くか `tshark` で ATT だけ抜き出してください:
+Apple の Bluetooth プロファイル (Developer サイトの "Profiles and Logs") を入れ、sysdiagnose から PacketLogger の `.pklg` を取得。
+`ble-re snoop` は `.pklg` もそのまま読めます (big/little endian 自動判定)。Wireshark 派なら `tshark` でも:
 
 ```bash
 tshark -r capture.pklg -Y "btatt.opcode in {0x12 0x52 0x1b 0x1d 0x0b}" \
@@ -153,10 +157,35 @@ handle 指定 (`0x0014`) も UUID 指定 (`fff2` / 完全形) も使えます。
 | CRC-8 / CRC-16 各種 | `crccheck` や `crcmod` で総当たり。`uv add crccheck` |
 | 2 の補数 | `(-sum(data[:-1])) & 0xff` |
 
+### 4b. CSV と突き合わせて配置を当てる — `fit`
+
+公式アプリが CSV などで「正解の値」を書き出せる機器なら、通信ログの notify と CSV の行を 1:1 に並べて、
+全オフセット × 全型 (u8/i16le/u16be/u24/u32/f32 …) を線形回帰で総当たりできます。
+
+```bash
+uv run ble-re snoop btsnoop_hci.log --data-only --jsonl > att.jsonl
+uv run ble-re fit att.jsonl --csv session.csv -H 0x0012 -c rri -c temperature -c "acceleration x+"
+```
+
+```
+alignment: shift=+3 (by 'rri', R²=1.0000)
+[rri]
+  R²=1.00000  n=147   rri = u16le[1]
+[temperature]
+  R²=1.00000  n=147   temperature = u16be[3] * 1/100
+layout (best guess):
+   0:?       1:rri     2:rri     3:temper  4:temper  5:accele ...
+```
+
+先頭ズレは自動で探索します。R² が低い列は非線形変換 (サーミスタの式など) かビットフィールドなので、
+そこだけアプリのコードを読みます。
+
 ### 5. アプリを読む — 分からない部分を確定させる
 
 ```bash
-# Android
+# Android: まず UUID を機械的に拾う
+uv run ble-re apk-uuids app.apk
+# 次に jadx でその UUID を検索し、writeCharacteristic を遡る
 jadx-gui app.apk
 ```
 
@@ -179,7 +208,9 @@ jadx-gui app.apk
 | `read ADDR CHAR` | 1 つ読んで hexdump + 解釈候補を出す |
 | `watch ADDR [-c CHAR ...] [-w CHAR=DATA ...] [-D SEC] [-o FILE.jsonl]` | notify/indicate を購読 (省略時は全部)。`-w` で購読後に順番に書き込み |
 | `write ADDR CHAR DATA [--response auto\|yes\|no] [--watch SEC]` | 1 回書く。`--watch` で直後の通知を監視 |
-| `snoop FILE [--summary] [--data-only] [-H 0x..] [--conn N] [--relative] [--jsonl]` | btsnoop を ATT レベルで解析 |
+| `snoop FILE [--summary] [--data-only] [-H 0x..] [--conn N] [--relative] [--jsonl]` | btsnoop / PacketLogger (.pklg) を ATT レベルで解析 |
+| `fit PACKETS.jsonl --csv FILE -c COL ... [-H 0x..] [--offset-search N] [--min-r2 R]` | notify のバイト列と CSV の値からフィールド配置を推定 |
+| `apk-uuids APK_OR_DIR` | APK / jadx 出力から UUID 文字列を拾う |
 
 JSONL ログの各行は `{"t": 経過秒, "kind": "notify|write|...", "handle": 18, "uuid": "...", "hex": "..."}`
 なので、pandas でそのまま `pd.read_json(path, lines=True)` できます。
@@ -201,5 +232,5 @@ JSONL ログの各行は `{"t": 経過秒, "kind": "notify|write|...", "handle":
 uv run pytest
 ```
 
-btsnoop パーサは合成ログでテストされています (`tests/test_snoop.py`)。
+btsnoop / pklg パーサと `fit` は合成データでテストされています (`tests/`)。
 実機なしで動作を確かめたいときはそのファイルの `sample()` を参考にしてください。

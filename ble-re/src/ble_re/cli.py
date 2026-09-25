@@ -95,6 +95,26 @@ def _cmd_snoop(a: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_fit(a: argparse.Namespace) -> int:
+    from .fit import load_csv_columns, load_packets, run_fit
+
+    handle = int(a.handle, 0) if a.handle else None
+    packets = load_packets(a.packets, handle=handle, min_len=a.min_len)
+    if not packets:
+        print("パケットが 0 件です (--handle の指定や JSONL の kind を確認)", file=sys.stderr)
+        return 1
+    columns, cols = load_csv_columns(a.csv, a.column)
+    print(run_fit(packets, columns, cols, offset_search=a.offset_search, min_r2=a.min_r2, top=a.top))
+    return 0
+
+
+def _cmd_apk(a: argparse.Namespace) -> int:
+    from .apk import format_report, scan
+
+    print(format_report(*scan(a.path)))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="ble-re", description="BLE リバースエンジニアリング用ツールキット")
     p.add_argument("--version", action="version", version=f"ble-re {__version__}")
@@ -145,7 +165,7 @@ def build_parser() -> argparse.ArgumentParser:
     wr.add_argument("--timeout", type=float, default=20.0)
     wr.set_defaults(func=_cmd_write)
 
-    sn = sub.add_parser("snoop", help="btsnoop_hci.log を ATT レベルで解析")
+    sn = sub.add_parser("snoop", help="HCI ログ (btsnoop_hci.log / PacketLogger .pklg) を ATT レベルで解析")
     sn.add_argument("file")
     sn.add_argument("-H", "--handle", action="append", help="この handle のみ (0x0012, 複数可)")
     sn.add_argument("--conn", type=int, help="この接続 handle のみ")
@@ -154,6 +174,21 @@ def build_parser() -> argparse.ArgumentParser:
     sn.add_argument("--summary", action="store_true", help="handle × opcode の件数表")
     sn.add_argument("--jsonl", action="store_true")
     sn.set_defaults(func=_cmd_snoop)
+
+    ft = sub.add_parser("fit", help="notify のバイト列と CSV の値を突き合わせてフィールド配置を推定")
+    ft.add_argument("packets", help="snoop --jsonl / watch -o の JSONL")
+    ft.add_argument("--csv", required=True, help="公式アプリが書き出した CSV")
+    ft.add_argument("-c", "--column", action="append", required=True, help="推定したい CSV の列名 (複数可)")
+    ft.add_argument("-H", "--handle", help="この handle の notify だけ使う (0x0012)")
+    ft.add_argument("--min-len", type=int, default=1)
+    ft.add_argument("--offset-search", type=int, default=5, help="先頭ズレの探索幅 (±行)")
+    ft.add_argument("--min-r2", type=float, default=0.9)
+    ft.add_argument("--top", type=int, default=3)
+    ft.set_defaults(func=_cmd_fit)
+
+    ak = sub.add_parser("apk-uuids", help="APK / jadx 出力ディレクトリから UUID 文字列を拾う")
+    ak.add_argument("path")
+    ak.set_defaults(func=_cmd_apk)
     return p
 
 

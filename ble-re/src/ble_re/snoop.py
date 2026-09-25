@@ -1,7 +1,9 @@
-"""btsnoop (Android の btsnoop_hci.log) を読んで ATT レイヤの通信を時系列に並べる。
+"""HCI ログ (Android の btsnoop_hci.log / iOS・macOS の PacketLogger .pklg) を読んで
+ATT レイヤの通信を時系列に並べる。
 
 Wireshark なしで「アプリがどの handle に何を書き、何が notify されたか」を一覧にするのが目的。
-対応: btsnoop v1 / datalink 1001 (HCI unencapsulated), 1002 (HCI UART H4)。
+対応: btsnoop v1 / datalink 1001 (HCI unencapsulated), 1002 (HCI UART H4)、
+      Apple PacketLogger (.pklg, big/little endian 自動判定)。
 L2CAP の分割再構成、LE Connection Complete による handle -> アドレス対応、
 Read By Type 応答からの value handle -> characteristic UUID 対応も行う。
 """
@@ -142,7 +144,20 @@ def _ts(us: int) -> datetime:
 
 
 def iter_records(fp: BinaryIO) -> Iterator[tuple[int, int, datetime, bytes]]:
-    """(record index, flags, timestamp, packet bytes) を順に返す。"""
+    """(record index, flags, timestamp, H4 packet bytes) を順に返す。
+
+    flags は btsnoop 流儀: bit0 = 1 なら受信 (controller -> host)。
+    パケットは常に H4 (先頭 1 バイトが 01=cmd / 02=ACL / 04=event) に正規化する。
+    """
+    head = fp.read(8)
+    fp.seek(0)
+    if head == BTSNOOP_MAGIC:
+        yield from _iter_btsnoop(fp)
+    else:
+        yield from _iter_pklg(fp)
+
+
+def _iter_btsnoop(fp: BinaryIO) -> Iterator[tuple[int, int, datetime, bytes]]:
     header = fp.read(16)
     if len(header) < 16 or header[:8] != BTSNOOP_MAGIC:
         raise ValueError("btsnoop 形式ではありません (magic 不一致)。Android の btsnooz 形式なら AOSP の btsnooz.py で展開してください。")
@@ -169,6 +184,53 @@ def iter_records(fp: BinaryIO) -> Iterator[tuple[int, int, datetime, bytes]]:
             data = bytes([ptype]) + data
         yield idx, flags, _ts(ts_us), data
         idx += 1
+
+
+# PacketLogger のレコード種別 -> (H4 type, 受信フラグ)
+_PKLG_TYPES: dict[int, tuple[int, int]] = {
+    0x00: (H4_CMD, 0),  # HCI command (host -> controller)
+    0x01: (H4_EVT, 1),  # HCI event
+    0x02: (H4_ACL, 0),  # ACL sent
+    0x03: (H4_ACL, 1),  # ACL received
+}
+_PKLG_MAX_LEN = 1 << 20
+
+
+def _pklg_endian(data: bytes) -> str:
+    """先頭数レコードを両エンディアンで歩いて、辻褄が合う方を選ぶ。"""
+    best, best_n = ">", -1
+    for endian in (">", "<"):
+        pos, n = 0, 0
+        while pos + 13 <= len(data) and n < 8:
+            ln = struct.unpack(endian + "I", data[pos : pos + 4])[0]
+            if ln < 9 or ln > _PKLG_MAX_LEN or pos + 4 + ln > len(data):
+                break
+            n += 1
+            pos += 4 + ln
+        if n > best_n:
+            best, best_n = endian, n
+    if best_n <= 0:
+        raise ValueError("btsnoop でも PacketLogger (.pklg) でもないファイルです")
+    return best
+
+
+def _iter_pklg(fp: BinaryIO) -> Iterator[tuple[int, int, datetime, bytes]]:
+    """Apple PacketLogger: [len u32][ts_sec u32][ts_usec u32][type u8][data]。len は type 以降 + 8。"""
+    data = fp.read()
+    endian = _pklg_endian(data)
+    pos, idx = 0, 0
+    while pos + 13 <= len(data):
+        ln, sec, usec = struct.unpack(endian + "III", data[pos : pos + 12])
+        ptype = data[pos + 12]
+        if ln < 9 or pos + 4 + ln > len(data):
+            return
+        body = data[pos + 13 : pos + 4 + ln]
+        pos += 4 + ln
+        if ptype in _PKLG_TYPES:
+            h4, rx = _PKLG_TYPES[ptype]
+            ts = datetime.fromtimestamp(sec, tz=timezone.utc) + timedelta(microseconds=usec)
+            yield idx, rx, ts, bytes([h4]) + body
+            idx += 1
 
 
 class SnoopParser:
