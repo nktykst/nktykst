@@ -1,8 +1,8 @@
 # Life OS 構想 — Claude × ローカルLLM で生活を回す
 
-> 対象ハード: デスクトップPC (RTX 5060 Ti 16GB / RAM 32GB)、マイク、スピーカー、部屋の照明、ESP32 (RuView 用、追加購入)
+> 対象ハード: デスクトップPC (RTX 5060 Ti 16GB / RAM 32GB)、マイク、スピーカー、部屋の照明、ESP32 + mmWave 人感センサー + ベッド圧力センサー (追加購入)
 > Claude の利用形態: **Max サブスク (100 ドルプラン) の Claude Code を headless で使う。API 従量課金は使わない**
-> 作成日: 2026-09-25 / 更新: 2026-09-25 v0.2 (RuView 監視と Max サブスク前提を反映) / 状態: 構想 (実装前)
+> 作成日: 2026-09-25 / 更新: 2026-09-25 v0.3 (在室検知を mmWave + 圧力センサーに変更、RuView は後回し) / 状態: 構想 (実装前)
 
 ---
 
@@ -11,7 +11,7 @@
 **「家の中に常駐する秘書」を、耳と口 (音声パイプライン) と手 (家電操作) と頭 (LLM) に分けて作る。**
 
 - **頭は二段構え。** 速さ・プライバシー・回数が要る処理はローカルLLM、深く考える処理は Claude (Max サブスクの Claude Code を headless で呼ぶ)。
-- **目もある。** RuView (WiFi 電波で在室・睡眠・活動を検知) で「今どこで何をしているか」を掴み、カメラなしで文脈を持つ。
+- **目もある。** mmWave 人感センサー (LD2450) とベッドの圧力センサーで「机にいる / ベッドにいる / 不在」を掴み、カメラなしで文脈を持つ。**サボってベッドにいたら注意する**のが第一の用途。
 - **記憶は一つ。** 目標・タスク・冷蔵庫・会議ログ・在室ログを全部同じDBに入れ、どの機能も同じ記憶を見る。
 - **入口は複数。** 音声 (部屋で話しかける)、チャット (スマホから)、定時 (朝のブリーフィング)、センサー (帰宅・起床を検知して動く)。
 - **段階的に育てる。** まず「声で照明を消せる」から始め、機能を一つずつ足す。
@@ -25,7 +25,7 @@
 | 英会話の練習 | Tutor | ローカル or Claude | 音声 | 音声 + セッション後の添削 |
 | タスク管理 (会議録音含む) | Tasks | ローカル (文字起こし) → Claude (要約・抽出) | 会議録音、チャット、音声 | タスク一覧 (自分 / メンバー別) |
 | 音声で会話・家電操作 | Home / Voice | ローカル | ウェイクワード + 音声 | スピーカー音声、照明操作 |
-| 在室・睡眠・活動の監視 | Sense (RuView) | ローカル (LLM 不要) | WiFi CSI (ESP32) | 在室 / 就寝 / 起床 / 転倒などの状態イベント |
+| 在室・ベッド滞在の監視 | Sense (mmWave + 圧力センサー) | ローカル (LLM 不要) | 人の座標 (ゾーン: 机 / ベッド)、ベッドの荷重 | at_desk / in_bed / away / 就寝 / 起床 の状態イベント |
 
 ---
 
@@ -36,9 +36,9 @@
                  │                                                                                             │
   マイク ──▶ [Wake word] ─▶ [VAD] ─▶ [STT: Whisper] ─▶┐                                                        │
                  │                                    │                                                        │
-  スマホ/PC チャット (Telegram / Discord / Web UI) ────┤                                                        │
+  スマホ/PC チャット (Discord Bot / Web UI)      ────┤                                                        │
                  │                                    │                                                        │
-  ESP32 (WiFi CSI) ─▶ [RuView server] ─▶ MQTT ─▶ [Home Assistant] ─▶ 状態イベント (在室 / 就寝 / 起床 / 転倒) ─┤ │
+  ESP32 + mmWave / ベッド圧力センサー ─(ESPHome)─▶ [Home Assistant] ─▶ 状態イベント (机 / ベッド / 不在 / 就寝 / 起床) ─┤ │
                  │                                    ▼                                                        │
   スケジューラ (毎朝 7:00 など) ─────────────────▶ [Orchestrator / Router]                                      │
                  │                                    │  意図分類・どの頭に投げるか決める                       │
@@ -84,31 +84,27 @@
 4. 英会話は**ローカルが本体**。会話ログの添削だけ Claude に回す (1 日 1 回)。Claude はターン単位の対話に向かない (遅延と枠の両面)。
 5. Claude の枠切れ (rate limit) を検知したら、そのジョブはローカル LLM で代替するか次の枠まで待つ。**止まらない設計**にする。
 
-### 1.3 なぜ RuView を入れるか
+### 1.3 在室検知は mmWave + 圧力センサーで (RuView は後回し)
 
-[RuView](https://github.com/ruvnet/RuView) は ESP32 が拾う WiFi の CSI (Channel State Information) の乱れから、カメラなしで人の在室・呼吸・活動・転倒を推定するオープンソース (MIT)。
+一番欲しいのは「**作業時間にベッドにいたら注意する**」こと。そのために必要なのは「机にいる / ベッドにいる / 不在」の 3 状態だけで、姿勢や心拍は要らない。
 
-- **カメラを置かずに「今、部屋に人がいるか / 寝ているか / 動いているか」が分かる。** 生活アシスタントに一番欲しい文脈がこれ。
-- **安い。** ESP32-S3 が 1 台 $9 前後。部屋ごとに 1〜2 台。
-- **Home Assistant に MQTT で自動登録される** (1 ノードあたり 21 エンティティ: 生データ 11 + 推定状態 10。`someone-sleeping`, `room-active`, `possible-distress` など)。HA を挟む本構想とそのまま噛み合う。
-- MCP サーバー (`@ruvnet/rvagent`、20 tools) と Claude Code プラグインも付属しており、Claude Code から直接センサーの状態を読める。
+| 手段 | ベッドと机の区別 | 手間 | 判断 |
+|---|---|---|---|
+| **mmWave 人感センサー LD2450** (ESP32 + ESPHome) | できる。人の座標 (x, y) が取れるので 1 台でゾーン (机 / ベッド) を判定 | 小。ESPHome が標準対応、HA コミュニティで枯れている | **採用** |
+| **ベッド圧力センサー** (FSR または荷重センサー + ESP32) | ベッドは確実。机は不明 | 小 | **採用** (mmWave の誤検知を潰す保険) |
+| USB カメラ + ローカル物体検出 | できる (人の bbox × ベッド領域) | 中。VRAM 1GB 弱 | 保留。「寝転んでスマホ」まで区別したくなったら検討。映像は保存せず結果だけ残す前提 |
+| [RuView](https://github.com/ruvnet/RuView) (WiFi CSI) | 同じ部屋で 1 台では難しい。ベータ | 大 | **後回し**。転倒検知・呼吸数が欲しくなった時に Phase 6 で試す |
 
-**使い方 (本構想での位置づけ):**
+**LD2450 の使い方:**
+- 部屋の壁 (机とベッドの両方が視野に入る位置、高さ 1〜1.5 m) に 1 台。検知範囲は約 6 m、最大 3 人の座標を同時に返す。
+- ESPHome の設定でゾーンを矩形で切る: `zone_desk`、`zone_bed`。HA には「机に人がいる」「ベッドに人がいる」「部屋に人がいる」の 3 つのバイナリセンサーとして出る。
+- 静止している人も検知できる (PIR との違い)。ただし壁や金属で反射するので、設置後に 1 週間ほどゾーンの境界を調整する。
 
-| 検知したいこと | RuView の状態 | 誰が使うか |
-|---|---|---|
-| 在室 / 不在 | presence, room-active | Home: 不在時は照明を消す、在室時だけ声をかける |
-| 就寝 / 起床 | someone-sleeping | Planner: `daily_log` の起床・就寝を**自動記録** (本人の入力不要)。起床検知で朝のブリーフィングを流す |
-| 長時間じっとしている | room-active が長時間 false | Planner: 「2 時間座りっぱなし、立ちませんか」 |
-| 複数人 | person count | Home: 来客中は nudge を止める |
-| 転倒 / 異常 | possible-distress, fall | Sense: スピーカーで安否確認 → 応答なしなら通知 |
-| 呼吸数 (夜間) | breathing rate | Planner: 睡眠の質の**参考値**として週次レビューに添える |
+**圧力センサーの使い方:**
+- マットレスの下に FSR (感圧抵抗) を 1〜2 枚、または脚の下に荷重センサー (HX711 + ロードセル)。ESP32 のアナログ入力で読む。
+- 「ベッドに荷重あり」の単純な ON / OFF。mmWave の `zone_bed` と AND を取ると誤検知がほぼ消える。
 
-**期待値の調整 (ベータ版のため):**
-- 信頼して使うのは**在室 / 睡眠 / 活動有無**まで。姿勢推定 (17 キーポイント) の単機実装はまだ精度が低いと README 自身が明記している。
-- 心拍・呼吸は「傾向」扱い。医療的な判断には使わない。
-- ESP32-C3 と初代 ESP32 は非対応 (シングルコア)。**買うのは ESP32-S3 か C6。**
-- 2.4GHz WiFi が必要。ルーターと ESP32 の配置で精度が変わるので、Phase 1 で試行錯誤する前提。
+**部品はどれも ESP32 に載る**ので、IR リモコン (照明) と同じ工作の延長で作れる。
 
 ---
 
@@ -140,7 +136,8 @@
 | Claude | **Claude Code CLI を headless 実行** (`claude -p`)。認証は `claude setup-token` の長期トークン | Max サブスクの枠で動く。API キー不要。tool は MCP サーバー経由で渡す (5 章参照) |
 | 家電ハブ | **Home Assistant** (Docker) | 1.1 参照 |
 | 照明操作 | **ESPHome** (ESP32 + IR LED) で赤外線リモコンを再現 | 既存のシーリングライトをそのまま使う。HA にネイティブ統合 |
-| 空間センシング | **RuView** (Docker の server + ESP32-S3 ノード) + **Mosquitto** (MQTT ブローカー) | 1.3 参照。HA に自動登録される |
+| 在室検知 | **LD2450 mmWave** + **ベッド圧力センサー** (ESP32 + ESPHome) | 1.3 参照。机 / ベッド / 不在をゾーンで判定。HA にネイティブ統合 |
+| (後回し) 空間センシング | RuView + Mosquitto (MQTT) | 転倒検知・呼吸数が欲しくなったら Phase 6 で |
 | カレンダー | **Google Calendar** (API + HA 統合) | Meet の予定 = 会議録音のトリガー |
 | ウェイクワード | **openWakeWord** (HA の Wyoming 経由) | 軽量、カスタムワード学習可 |
 | VAD | **Silero VAD** | 発話区間の切り出し。英会話の応答速度に直結 |
@@ -156,7 +153,7 @@
 ### 2.3 OS と周辺機器 (決定済み)
 
 - **PC は Linux。** GPU・音声 I/O・Docker が全部一つの環境で済む。音声は PipeWire 経由で扱う。音声サテライト (別筐体) は不要。マイクはデスクのみ。
-- **照明はスマート家電ではない → 赤外線リモコンを ESP32 + IR LED で代替する** (ESPHome)。RuView と同じ ESP32 系なので工作の知見が共通する。時間を買うなら SwitchBot Hub Mini / Nature Remo (5,000 円前後、HA 対応) という逃げ道もある。
+- **照明はスマート家電ではない → 赤外線リモコンを ESP32 + IR LED で代替する** (ESPHome)。mmWave / 圧力センサーと同じ ESP32 + ESPHome なので工作の知見が共通する。時間を買うなら SwitchBot Hub Mini / Nature Remo (5,000 円前後、HA 対応) という逃げ道もある。
 - **スピーカーは Dell モニター内蔵で開始** (HDMI / DP 経由の音声出力)。ただし英会話の barge-in には「マイクがスピーカーの音を拾わない」ことが必要なので、**エコーキャンセル内蔵の USB スピーカーフォン** (Jabra Speak / Anker PowerConf 系、1〜2 万円) を Phase 5 までに用意するのが確実。それまでは PipeWire のエコーキャンセルモジュールで凌ぐ。
 - **会議は Google Meet。** ブラウザの出力 (相手の声) とマイク (自分の声) を PipeWire で 2 トラック録音する。
 - **カレンダーは Google Calendar に寄せる。** Meet の招待がそこに来るので会議録音のトリガーにも使える。iPhone には Google アカウントを追加して同じ予定を表示する (iCloud カレンダーへの拘りなし、と確認済み)。
@@ -189,14 +186,29 @@
 - 叱らない。「やらなかった理由」を一言聞いて、翌日の計画に反映する。
 - 強さは設定可能にする (`preferences.nudge_level`)。
 
-**必要な tool:** `read_calendar`, `list_tasks`, `list_goals`, `write_daily_log`, `speak(text)`, `schedule_reminder`.
+**サボり検知のエスカレーション (Sense の `in_bed_during_work` を受けて):**
+
+| 経過 | 行動 | 本人の応答があった場合 |
+|---|---|---|
+| 0 分 | 何もしない (ベッドに座って本を読むこともある) | |
+| 15 分 | スピーカーで一言。「ベッドにいるね。休憩なら何分にする？」 | 「30 分寝る」→ `declare_break(30)`。30 分は黙り、終了時に一声かける |
+| 25 分 | もう一度、少し強く。「予定では今『論文の続き』の時間だよ」。Discord `#planner` にも送る | 「今日は体調悪い」→ その日の nudge を止め、`daily_log` に記録 |
+| 40 分 | 照明を focus シーン (昼白色 100%) にする。「起きてから 5 分だけやろう」 | 机に戻る (`at_desk`) → 「おかえり」だけ言って終了。戻った事実を `presence_log` に残す |
+| 60 分〜 | 20 分ごとに繰り返す。週次レビューで「作業時間帯のベッド滞在」として合計を出す | |
+
+- **除外条件:** 就寝時間帯、宣言済みの休憩、来客中 (`guests_present`)、体調不良の申告日、休日設定。
+- **強さは `preferences.nudge_level` で 3 段階** (穏やか / 普通 / 厳しめ)。厳しめは 15 分の時点で照明も変える。
+- 叱責はしない。「戻れたら勝ち」の扱いで、戻った回数を週次レビューで褒める側に計上する。
+- 作業時間帯 (例: 平日 9:00〜18:00) は `preferences.work_hours` に持ち、カレンダーの予定 (授業、実習) で上書きされる。
+
+**必要な tool:** `read_calendar`, `list_tasks`, `list_goals`, `write_daily_log`, `speak(text)`, `schedule_reminder`, `declare_break`, `set_light_scene`.
 
 ### 3.2 Kitchen — 自炊の管理
 
 **役割:** 冷蔵庫の中身を把握し、栄養バランスを見て献立と買い物を提案する。
 
 **在庫の把握方法 (現実的な順):**
-1. **写真** — Telegram で冷蔵庫の写真を送る → Claude (画像対応) が品目と概量を JSON で抽出 → `inventory` に反映。週 1〜2 回で十分。
+1. **写真** — Discord の `#kitchen` に冷蔵庫の写真を送る → Claude (画像対応) が品目と概量を JSON で抽出 → `inventory` に反映。週 1〜2 回で十分。
 2. **買い物申告** — レシートの写真、または「豚肉と玉ねぎ買った」と声で言う → ローカル LLM で品目抽出。
 3. **消費申告** — 献立を「作った」とマークすると、使った食材を自動で減らす。
 
@@ -209,7 +221,7 @@
 
 **買い物リスト (週次):**
 - 在庫 + 来週の予定 + 直近 2 週間の栄養の偏り (野菜不足、タンパク質不足など) から Claude が生成。
-- Telegram にチェックリストとして送り、店で消し込めるようにする。
+- Discord `#kitchen` にチェックリストとして送り、店で消し込めるようにする。
 
 **必要な tool:** `get_inventory`, `update_inventory`, `log_meal`, `get_meal_history`, `send_checklist`.
 
@@ -281,7 +293,7 @@
    ─▶ Claude: 要約 + 決定事項 + タスク抽出 (structured outputs で JSON 固定)
         { "summary": ..., "decisions": [...],
           "tasks": [ { "title": ..., "owner": "田中", "due": "2026-10-03", "source_quote": "..." } ] }
-   ─▶ 本人が Telegram / Web UI で確認・修正してから `tasks` に登録 (自動登録はしない)
+   ─▶ 本人が Discord `#tasks` / Web UI で確認・修正してから `tasks` に登録 (自動登録はしない)
 ```
 
 - **生の音声は PC の外に出さない。** Claude に送るのはテキスト化した後の内容だけ。
@@ -290,7 +302,7 @@
 
 **会議以外のタスク入力:**
 - 声: 「田中さんに来週の資料を依頼した、金曜まで」 → ローカル LLM が構造化 → 登録。
-- チャット: Telegram に一行送る。
+- チャット: Discord `#tasks` に一行送る。
 - 既存ツール (GitHub Issues / Notion / Todoist など) を使っているなら、そこを正とし、片方向または双方向で同期する。**まずは SQLite を正にして、必要になったら同期を足す。**
 
 **メンバー別ビュー:**
@@ -320,28 +332,35 @@
 - PC 直結 (USB / 3.5mm / Bluetooth) が最も簡単で、TTS 音声をそのまま流せる。
 - Google Nest / Amazon Echo のようなスマートスピーカーは**外から任意音声を流すのが難しい** (HA のキャスト機能で一部可能)。手持ちがそれなら確認が必要。
 
-### 3.6 Sense — RuView による在室・睡眠・活動の把握
+### 3.6 Sense — mmWave + 圧力センサーによる在室・ベッド滞在の把握
 
-**役割:** LLM を使わない「反射神経」。RuView の状態変化をイベントに変換し、他のエージェントに文脈を渡す。
+**役割:** LLM を使わない「反射神経」。センサーの状態変化をイベントに変換し、他のエージェントに文脈を渡す。
+
+**入力 (HA のバイナリセンサー):**
+- `binary_sensor.desk_occupied` — LD2450 の `zone_desk`
+- `binary_sensor.bed_occupied` — LD2450 の `zone_bed` AND 圧力センサー
+- `binary_sensor.room_occupied` — LD2450 の全体
+- `sensor.person_count` — LD2450 のターゲット数
 
 **イベント化のルール (HA のオートメーション or Orchestrator 内):**
 
-| RuView の状態遷移 | 発行するイベント | 直後に起きること |
+| 状態遷移 | 発行するイベント | 直後に起きること |
 |---|---|---|
-| presence: 不在 → 在室 (夕方以降) | `came_home` | 照明を relax シーンに。Planner が「おかえり、今日残ってるのは 2 つ」と一言 |
-| presence: 在室 → 不在 (10 分継続) | `left_home` | 照明オフ、nudge 停止 |
-| someone-sleeping: false → true (深夜) | `fell_asleep` | `daily_log.sleep` を記録、照明オフ |
-| someone-sleeping: true → false (朝) | `woke_up` | `daily_log.wake` を記録。10 分後に朝のブリーフィングを流す |
-| room-active: false が 90 分継続 (日中、在室) | `sedentary` | 「立ち上がりませんか」の一言 (nudge_level に従う) |
-| person count ≥ 2 | `guests_present` | 音声の自発発話を全て止める |
-| possible-distress / fall | `distress` | スピーカーで「大丈夫ですか」→ 30 秒応答なしで Telegram に通知 (将来: 家族への連絡) |
+| desk_occupied: false → true | `at_desk` | 集中ブロック中なら照明を focus に。nudge 停止 |
+| bed_occupied: false → true (作業時間帯、宣言した休憩なし) | `in_bed_during_work` | **サボり検知のエスカレーション開始** (3.1 参照) |
+| bed_occupied: false → true (就寝時間帯) | `fell_asleep` (20 分継続で確定) | `daily_log.sleep` を記録、照明オフ |
+| bed_occupied: true → false (朝、20 分以上戻らない) | `woke_up` | `daily_log.wake` を記録。10 分後に朝のブリーフィングを流す |
+| room_occupied: false → true (夕方以降) | `came_home` | 照明を relax シーンに。Planner が「おかえり、今日残ってるのは 2 つ」と一言 |
+| room_occupied: true → false (10 分継続) | `left_home` | 照明オフ、nudge 停止 |
+| desk_occupied が 90 分連続 true | `sedentary` | 「立ち上がりませんか」の一言 (nudge_level に従う) |
+| person_count ≥ 2 | `guests_present` | 音声の自発発話を全て止める |
 
 **設計方針:**
-- イベントは全て `presence_log` に残し、Planner の週次レビューで「在宅時間」「就寝 / 起床のばらつき」「座りっぱなしの回数」として振り返りに使う。
+- イベントは全て `presence_log` に残し、Planner の週次レビューで「机にいた時間」「作業時間帯のベッド滞在回数」「就寝 / 起床のばらつき」として振り返りに使う。
 - 誤検知前提で**デバウンス**を入れる (状態が N 分続いてから発火)。特に `left_home` と `fell_asleep`。
-- Claude には生の CSI を渡さない。渡すのは日次で集計した「在宅 9.5 時間、就寝 0:40、起床 7:10」程度の要約だけ。
+- Claude には生のセンサー値を渡さない。渡すのは日次で集計した「机 6.5 時間、ベッド滞在 (作業時間帯) 2 回 計 40 分、就寝 0:40、起床 7:10」程度の要約だけ。
 
-**必要な tool:** `get_presence_state(room)`, `get_sleep_summary(date)`, `get_presence_log(from, to)`.
+**必要な tool:** `get_presence_state()`, `get_sleep_summary(date)`, `get_presence_log(from, to)`, `declare_break(minutes)`.
 
 ---
 
@@ -356,7 +375,7 @@
 | `people` | name, role, voice_embedding, notes | 本人、Tasks |
 | `meetings` | date, participants, transcript_path, summary, decisions | Tasks |
 | `daily_log` | date, wake, sleep, mood, notes, done | Planner (wake / sleep は Sense が自動記入) |
-| `presence_log` | ts, room, event (came_home / left_home / fell_asleep / woke_up / sedentary / distress ...), raw_state | Sense |
+| `presence_log` | ts, event (at_desk / in_bed_during_work / fell_asleep / woke_up / came_home / left_home / sedentary ...), raw_state, escalation_step | Sense |
 | `habits` / `habit_log` | name, target, date, done | Planner |
 | `inventory` | item, qty, unit, added_at, expires_at | Kitchen |
 | `meals` | date, dishes, ingredients_used, rating | Kitchen |
@@ -382,7 +401,7 @@
 | Claude Code の Routines (クラウド定時実行) | 使える (Pro / Max 対象) | Anthropic 側で動くので PC が落ちていても動くが、**家の中の機器や DB には届かない**。今回は使わない |
 | Claude Desktop の scheduled tasks | 使える | Desktop アプリが起動している間だけ。ローカル cron の代替候補 |
 | **Anthropic Python SDK / Agent SDK** | **使えない (API キーが必要)** | サブスクの OAuth を SDK で使うのは不可。Max 向けの Agent SDK クレジット制度は 2026-06 時点で「一時停止」と案内されている。着手時に再確認 |
-| Claude Tag (Slack 常駐) | 使えない (Team / Enterprise のみ) | スマホからの入口は自前の Telegram Bot で作る |
+| Claude Tag (Slack 常駐) | 使えない (Team / Enterprise のみ) | スマホからの入口は自前の Discord Bot で作る |
 
 参照: code.claude.com/docs/en/authentication, /scheduled-tasks, /routines, /desktop-scheduled-tasks, support.claude.com「What is the Max plan」「Use the Claude Agent SDK with your Claude plan」
 
@@ -401,7 +420,7 @@
 ```
 
 - **Life OS 側は MCP サーバーを 1 つ書く** (`src/lifeos/mcp_server.py`)。`list_tasks`, `write_daily_log`, `get_inventory`, `get_sleep_summary`, `speak` などを tool として公開する。ローカル LLM からも同じ tool を Ollama の tool calling で呼べるように、実体は共通の Python 関数にする。
-- **HA と RuView は既製の MCP** を繋ぐ (HA は公式 MCP Server 統合、RuView は `@ruvnet/rvagent`)。
+- **HA は既製の MCP** を繋ぐ (公式の MCP Server 統合)。センサーの状態も HA 経由で読める。
 - **エージェント = プロンプトファイル + 許可 tool の組**。Planner / Kitchen / Tasks / Tutor(添削) はそれぞれ `config/prompts/*.md` と `--allowedTools` の違いだけ。
 - **多ターンの相談**は `--resume <session_id>` で続ける。長期記憶は MCP 経由で SQLite に置くので、セッションが切れても困らない。
 - **画像入力** (冷蔵庫の写真) はファイルパスをプロンプトに書いて Claude Code に読ませる。
@@ -414,7 +433,7 @@ Max 5x は「5 時間ごとの利用枠」と「週次上限」があり、正�
 
 | 用途 | 頻度 | 重さ | 備考 |
 |---|---|---|---|
-| 朝ブリーフィング | 1 回/日 | 中 | 起床検知 (RuView) をトリガーに |
+| 朝ブリーフィング | 1 回/日 | 中 | 起床検知 (ベッドセンサー) をトリガーに |
 | 夜の振り返りの要約 | 1 回/日 | 小 | 音声のやりとり自体はローカル |
 | 週次レビュー | 1 回/週 | 大 | 週末の枠が空いている時間に |
 | 会議の要約・タスク抽出 | 会議ごと (週 3〜5) | 中〜大 | 文字起こしはローカル。長い会議は分割 |
@@ -437,11 +456,10 @@ Max 5x は「5 時間ごとの利用枠」と「週次上限」があり、正�
 ### Phase 0 — 土台 (まずここだけやる)
 - [x] OS の決定 → Linux (決定済み)
 - [ ] Ollama を入れ、Qwen3 14B と 8B を試して速度と賢さを比較
-- [ ] 買い物: ESP32-S3 ×2〜3、IR LED / IR 受信モジュール、(後で) USB スピーカーフォン
+- [ ] 買い物: ESP32 ×2〜3、LD2450 mmWave センサー、FSR (圧力センサー)、IR LED / IR 受信モジュール、(後で) USB スピーカーフォン
 - [ ] Home Assistant を Docker で立て、照明を登録し、ブラウザから点灯 / 消灯
 - [ ] faster-whisper と TTS (Kokoro + VOICEVOX) を単体で動かし、マイク → 文字、文字 → スピーカーを確認
 - [ ] Claude Code をこの PC に入れ、`claude setup-token` で長期トークンを発行。`claude -p "hello" --output-format json` が通ることを確認
-- [ ] ESP32-S3 を 2 台注文 (1 台は予備 / 別部屋用)
 - [ ] リポジトリ作成 (`life-os/`)、uv でプロジェクト初期化、SQLite スキーマ v0
 
 **完了条件:** 各部品が単体で動く。
@@ -449,17 +467,19 @@ Max 5x は「5 時間ごとの利用枠」と「週次上限」があり、正�
 ### Phase 1 — 声で照明が操作できる + 在室が分かる
 - [ ] HA Assist (openWakeWord + Whisper + TTS) で「電気消して」が通る
 - [ ] Orchestrator (FastAPI) を作り、HA の会話エージェントとして登録。意図分類をローカル LLM で行う
-- [ ] Telegram Bot を繋ぎ、同じ Orchestrator にテキストでも話せる
-- [ ] RuView: ESP32-S3 に firmware を焼き、Docker の server + Mosquitto を立て、HA に presence エンティティが出るまで
-- [ ] RuView の presence で「不在 10 分で消灯」の HA オートメーション。誤検知の頻度を 1 週間観察し、ESP32 の位置を調整
+- [ ] Discord Bot を繋ぎ、同じ Orchestrator にテキストでも話せる
+- [ ] LD2450 を ESPHome で HA に繋ぎ、`zone_desk` / `zone_bed` のバイナリセンサーが出るまで。1 週間ゾーン境界を調整
+- [ ] ベッドの圧力センサーを ESP32 に繋ぎ、`bed_occupied` が mmWave AND 圧力で出る
+- [ ] 「不在 10 分で消灯」の HA オートメーション
 
-**完了条件:** 部屋で話しかけると照明が変わり、スマホからも同じことができ、部屋を出ると勝手に消える。
+**完了条件:** 部屋で話しかけると照明が変わり、スマホからも同じことができ、部屋を出ると勝手に消え、HA の画面で「机 / ベッド / 不在」が正しく出る。
 
 ### Phase 2 — Planner + Tasks (テキストから)
 - [ ] Life OS の MCP サーバー v0 (`list_tasks`, `list_goals`, `write_daily_log`, `speak`) を書き、`claude -p --mcp-config` から呼べることを確認
 - [ ] `goals` / `tasks` / `daily_log` / `presence_log` のテーブルと tool
-- [ ] Claude Code による朝のブリーフィング (まずは Telegram にテキストで、次にスピーカー読み上げ)。トリガーは cron → RuView の `woke_up` へ
-- [ ] 夜の振り返りを音声で記録。就寝・起床は RuView の `someone-sleeping` から自動記入
+- [ ] Claude Code による朝のブリーフィング (まずは Discord にテキストで、次にスピーカー読み上げ)。トリガーは cron → ベッドセンサーの `woke_up` へ
+- [ ] 夜の振り返りを音声で記録。就寝・起床は `bed_occupied` から自動記入
+- [ ] **サボり検知のエスカレーション** (`in_bed_during_work` → 15 / 25 / 40 分の段階)。`declare_break` で黙らせられること
 - [ ] rate limit 時のフォールバック (ローカル LLM で簡易版) と `claude_usage` の記録
 - [ ] 声・チャットからのタスク登録、メンバー別一覧
 - [ ] 週次レビュー
@@ -472,7 +492,7 @@ Max 5x は「5 時間ごとの利用枠」と「週次上限」があり、正�
 - [ ] Claude で要約 + タスク抽出 (structured outputs) → 確認 UI → `tasks` 登録
 - [ ] 保存期間ポリシー、同意の運用
 
-**完了条件:** 会議のあと 10 分以内に、要約とタスク候補が Telegram に届く。
+**完了条件:** 会議のあと 10 分以内に、要約とタスク候補が Discord `#tasks` に届く。
 
 ### Phase 4 — Kitchen
 - [ ] 冷蔵庫の写真 → `inventory`
@@ -491,7 +511,7 @@ Max 5x は「5 時間ごとの利用枠」と「週次上限」があり、正�
 ### Phase 6 — 磨き込み
 - [ ] Planner と照明シーンの連動 (集中 / リラックス / 就寝)
 - [ ] Sense のイベントを増やす: `sedentary`、`guests_present`、`distress` → 安否確認フロー
-- [ ] RuView を 2 部屋目 (キッチン / 寝室) に拡張。夜間の呼吸数を週次レビューに添える
+- [ ] (任意) RuView を試す。転倒検知や夜間の呼吸数が欲しくなったら。Mosquitto + RuView server を compose に足す
 - [ ] Claude 呼び出し回数とレイテンシの計測ダッシュボード
 - [ ] 既存タスクツールとの同期 (必要なら)
 
@@ -502,8 +522,9 @@ Max 5x は「5 時間ごとの利用枠」と「週次上限」があり、正�
 ```
 life-os/
 ├── pyproject.toml           # uv で管理
-├── docker-compose.yml       # home-assistant, ollama, mosquitto, ruview, (voicevox)
+├── docker-compose.yml       # home-assistant, voicevox, (後で mosquitto, ruview)
 ├── config/
+│   ├── esphome/             # ir-blaster.yaml, presence.yaml (LD2450 + 圧力センサー)
 │   ├── prompts/             # エージェントごとの system prompt (planner.md, kitchen.md, ...)
 │   ├── mcp.json             # Claude Code に渡す MCP サーバー一覧 (lifeos, home-assistant, ruview)
 │   └── settings.toml        # モデル名、HA の URL、ウェイクワード、nudge_level など
@@ -516,7 +537,7 @@ life-os/
 │   │   ├── tutor.py
 │   │   ├── tasks.py
 │   │   ├── home.py
-│   │   └── sense.py         # RuView の状態遷移 → イベント (デバウンス込み)
+│   │   └── sense.py         # センサーの状態遷移 → イベント (デバウンス、除外条件、エスカレーション)
 │   ├── llm/
 │   │   ├── local.py         # Ollama クライアント (tool calling 込み)
 │   │   └── claude_code.py   # `claude -p` の subprocess ラッパ (JSON 解析、resume、rate limit 検知、usage 記録)
@@ -530,7 +551,6 @@ life-os/
 │   │   └── store.py         # SQLite + sqlite-vec
 │   ├── integrations/
 │   │   ├── home_assistant.py
-│   │   ├── ruview.py        # MQTT 購読 (HA 経由でも可)
 │   │   ├── telegram.py
 │   │   └── calendar.py
 │   └── jobs/                # 朝 / 夜 / 週次の定時ジョブ
@@ -547,8 +567,8 @@ life-os/
 - **録音の同意とデータ保持。** 会議相手に説明し、生音声はローカルのみ、保存期間を決めて自動削除。
 - **Claude Code の OAuth トークンの管理。** `claude setup-token` のトークンは環境変数か OS のキーチェーンに置く。リポジトリには絶対に入れない。1 年で失効するので更新日をカレンダーに入れる。
 - **サブスク枠の枯渇。** 開発でも運用でも同じ枠を使う。運用ジョブが枠切れで落ちても、ローカル LLM の簡易版で動き続ける設計にする (5.3)。Agent SDK をサブスクで使える制度が再開されたら、SDK への移行を検討する。
-- **RuView はベータ。** 在室・睡眠以外の推定 (姿勢、心拍) は当てにしない。HA のオートメーションには必ずデバウンスを入れ、誤検知で照明が消える事故を減らす。ESP32 の配置とルーターとの位置関係で精度が大きく変わる。
-- **「律してくれる」が「うるさい」になる。** nudge_level を設定可能にし、Phase 2 で一週間使って調整する。RuView で不在・来客・就寝中を検知したら自発発話を止める。
+- **センサーの誤検知。** mmWave は壁や金属の反射、扇風機などの動きで誤検知する。ベッド判定は圧力センサーと AND を取り、HA のオートメーションには必ずデバウンスを入れる。設置後 1 週間はログを見てゾーン境界を直す。
+- **「律してくれる」が「うるさい」になる。** nudge_level を設定可能にし、Phase 2 で一週間使って調整する。センサーで不在・来客・就寝中を検知したら自発発話を止める。サボり検知は「戻れたら勝ち」の扱いにし、叱責しない。
 - **最初から全部作らない。** Phase 1 で「声で照明」が動いた時点の満足感が、その後の継続を支える。
 
 ---
@@ -559,6 +579,7 @@ life-os/
 
 | # | 項目 | 決定 | 設計への影響 |
 |---|---|---|---|
+| 0 | 在室検知 | 目的は「サボってベッドにいたら注意」。RuView は後回し | LD2450 mmWave + ベッド圧力センサー (1.3, 3.6)。エスカレーション設計 (3.1) |
 | 1 | OS | Linux | 全部 1 環境。音声は PipeWire。サテライト不要 |
 | 2 | 照明 | スマート家電ではない。赤外線リモコンを電子工作で代替 | ESPHome + ESP32 + IR LED (Phase 0 の買い物リスト参照) |
 | 3 | スピーカー | Dell モニター内蔵で開始。必要なら購入 | 通知用はモニターで十分。英会話用にエコーキャンセル付き USB スピーカーフォンを Phase 5 までに |
@@ -570,7 +591,7 @@ life-os/
 
 ### 9.2 まだ決めていないこと
 
-1. **RuView を置く部屋と WiFi** — 最初はデスクのある部屋で良いか。ルーターは 2.4GHz を出しているか。ESP32-S3 を 2〜3 台買って良いか (RuView 用 1〜2 台 + IR 用 1 台)。
+1. **机とベッドは同じ部屋か** — 同じなら LD2450 は 1 台で済む。別の部屋なら 2 台 (ESP32 も 2 台)。
 2. **Claude Code をこの PC で使う頻度** — 開発と運用が同じサブスク枠を使うので、運用ジョブを早朝 / 深夜に寄せるか。
 3. **Linux のディストリビューション** — Phase 0 の手順は Ubuntu / Debian 系で書いてある。違う場合はパッケージ名を読み替える。
 4. **照明のリモコンの種類** — メーカーと型番。ESPHome で赤外線コードを学習させる際、既知のプロトコル (NEC など) なら楽。

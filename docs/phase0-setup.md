@@ -12,7 +12,9 @@
 
 | 品目 | 数量 | 用途 | 目安 |
 |---|---|---|---|
-| **ESP32-S3 開発ボード** (ESP32-S3-DevKitC-1 など。C3 / 無印 ESP32 は不可) | 2〜3 | RuView ノード ×1〜2、IR リモコン ×1 | 1,500〜2,500 円 / 個 |
+| **ESP32 開発ボード** (ESP32-DevKitC / ESP32-S3-DevKitC-1 など。ESPHome が動けば何でも良い) | 2〜3 | 在室センサー ×1、IR リモコン ×1、予備 ×1 | 1,000〜2,500 円 / 個 |
+| **LD2450 mmWave レーダーモジュール** (HLK-LD2450) | 1 (机とベッドが別の部屋なら 2) | 人の座標を取り、机 / ベッドのゾーン判定 | 1,500〜2,500 円 |
+| **FSR 感圧センサー** (FSR-406 などの長いもの、または薄型の圧力マット) + 10kΩ 抵抗 | 1〜2 | マットレスの下に敷いてベッド在床を検知 | 1,000〜3,000 円 |
 | **赤外線 LED** (940nm) + **NPN トランジスタ** (2N2222 / S8050) + 抵抗 (100Ω, 1kΩ) | 各 1 | IR 送信 (ESP32 の GPIO 直結だと出力が弱い) | 数百円 |
 | **赤外線受信モジュール** (VS1838B / TSOP38238) | 1 | 手持ちリモコンの信号を学習する | 数百円 |
 | ブレッドボード、ジャンパ線、USB-C ケーブル | 一式 | | 1,000 円前後 |
@@ -20,6 +22,8 @@
 | (任意) **USB マイク** | 1 | スピーカーフォンを買うまでの間に合わせ | 3,000 円〜 |
 
 時間を買うなら: IR 工作の代わりに **SwitchBot Hub Mini** (約 5,000 円) を買えば HA から即リモコン操作できる。工作したいなら上のリストで良い。
+
+RuView (WiFi CSI) 用の ESP32-S3 は**今は買わない**。後で試したくなったら ESP32-S3 / C6 を別途足す。
 
 ---
 
@@ -75,7 +79,7 @@ curl http://localhost:11434/v1/chat/completions -d '{
 
 ---
 
-## 3. Home Assistant + MQTT + RuView (Docker)
+## 3. Home Assistant + VOICEVOX (Docker)
 
 `~/life-os/docker-compose.yml`:
 
@@ -84,26 +88,11 @@ services:
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:stable
     container_name: homeassistant
-    network_mode: host          # mDNS / 機器発見のため
+    network_mode: host          # mDNS / ESPHome 機器の発見のため
     privileged: true
     volumes:
       - ./data/ha:/config
       - /etc/localtime:/etc/localtime:ro
-    restart: unless-stopped
-
-  mosquitto:
-    image: eclipse-mosquitto:2
-    container_name: mosquitto
-    ports: ["1883:1883"]
-    volumes:
-      - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf
-      - ./data/mosquitto:/mosquitto/data
-    restart: unless-stopped
-
-  ruview:
-    image: ruvnet/wifi-densepose:latest   # まずはシミュレーションモードで UI を見る
-    container_name: ruview
-    ports: ["3000:3000"]
     restart: unless-stopped
 
   voicevox:
@@ -117,29 +106,16 @@ services:
     restart: unless-stopped
 ```
 
-`~/life-os/config/mosquitto.conf`:
-
-```
-listener 1883
-allow_anonymous true      # LAN 内のみ。外に出すなら認証を付ける
-persistence true
-persistence_location /mosquitto/data/
-```
-
 ```bash
-mkdir -p ~/life-os/{config,data/ha,data/mosquitto} && cd ~/life-os
+mkdir -p ~/life-os/{config,data/ha} && cd ~/life-os
 docker compose up -d
 ```
 
 **確認:**
-- `http://localhost:8123` で HA の初期設定 (アカウント作成)。設定 → 統合 → MQTT を追加 (ブローカー `localhost:1883`)。
-- `http://localhost:3000` で RuView のシミュレーション画面が出る。
+- `http://localhost:8123` で HA の初期設定 (アカウント作成)。設定 → 統合 → **ESPHome** を追加しておく (9 章と 10 章の機器が自動発見される)。
 - `http://localhost:50021/docs` で VOICEVOX の API ドキュメントが出る。
 
-**RuView 実機 (ESP32-S3 が届いたら):**
-- リポジトリの README 「ESP32-S3 firmware flashing」の手順通りに esptool で焼き、WiFi を設定する。手順はバージョンで変わるので README を正とする。
-- server 側を実機モードに切り替え、MQTT を Mosquitto に向ける。HA の MQTT 統合に `presence` などのエンティティが自動で出れば成功。
-- ESP32 はルーターとデスクの間、腰〜胸の高さに置くところから試す。
+Mosquitto (MQTT) と RuView は今は入れない。後で RuView を試すときに compose に足す。
 
 ---
 
@@ -331,7 +307,85 @@ switch:
 
 ---
 
-## 10. リポジトリの初期化
+## 10. 在室センサー (LD2450 mmWave + ベッド圧力センサー)
+
+**配線:**
+- LD2450 → ESP32: `5V`/`GND`、`TX`→`GPIO16`、`RX`→`GPIO17` (UART、256000 bps)
+- FSR → ESP32: FSR の片側を 3.3V、もう片側を `GPIO34` (ADC) と 10kΩ 抵抗を介して GND (分圧)
+
+`config/esphome/presence.yaml`:
+
+```yaml
+esphome:
+  name: presence
+esp32:
+  board: esp32dev
+  framework: { type: esp-idf }
+wifi: { ssid: !secret wifi_ssid, password: !secret wifi_password }
+api:
+logger: { baud_rate: 0 }   # UART をセンサーに使うのでシリアルログは切る
+
+uart:
+  id: ld2450_uart
+  tx_pin: GPIO17
+  rx_pin: GPIO16
+  baud_rate: 256000
+  parity: NONE
+  stop_bits: 1
+
+ld2450:
+  id: ld2450_radar
+  uart_id: ld2450_uart
+
+binary_sensor:
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    has_target: { name: "Room Occupied" }
+  # ゾーン。座標 (mm) はセンサー位置を原点、正面が +y。設置後に HA の座標表示を見て決める
+  - platform: template
+    name: "Desk Occupied"
+    lambda: return id(zone1_target_count).state > 0;
+  - platform: template
+    name: "Bed Occupied"
+    lambda: return id(zone2_target_count).state > 0 && id(bed_pressure).state > 0.4;
+
+sensor:
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    target_count: { name: "Person Count" }
+    zone_1: { target_count: { id: zone1_target_count, name: "Zone Desk Count" } }
+    zone_2: { target_count: { id: zone2_target_count, name: "Zone Bed Count" } }
+    target_1: { x: { name: "T1 X" }, y: { name: "T1 Y" } }   # 設置調整用。決まったら消して良い
+  - platform: adc
+    id: bed_pressure
+    pin: GPIO34
+    attenuation: 12db
+    name: "Bed Pressure"
+    update_interval: 2s
+    filters: [ { sliding_window_moving_average: { window_size: 5, send_every: 1 } } ]
+
+number:   # ゾーンの矩形は HA 側から数値で調整できるようにする
+  - platform: ld2450
+    ld2450_id: ld2450_radar
+    zone_1: { x1: { name: "Desk X1" }, y1: { name: "Desk Y1" }, x2: { name: "Desk X2" }, y2: { name: "Desk Y2" } }
+    zone_2: { x1: { name: "Bed X1" },  y1: { name: "Bed Y1" },  x2: { name: "Bed X2" },  y2: { name: "Bed Y2" } }
+```
+
+```bash
+esphome run config/esphome/presence.yaml
+```
+
+**設置と調整:**
+1. 机とベッドの両方が見える壁に、高さ 1〜1.5 m で取り付ける (両面テープで仮止め)。
+2. HA の「T1 X / T1 Y」を見ながら、自分が机に座った時とベッドに寝た時の座標を読む。
+3. その座標を囲む矩形を「Desk X1..Y2」「Bed X1..Y2」に入れる。
+4. 1 週間、`Desk Occupied` / `Bed Occupied` の履歴グラフを見て誤検知を潰す。FSR のしきい値 (`0.4`) もベッドに乗った時の値を見て直す。
+
+**確認:** 机に座ると `Desk Occupied` が ON、ベッドに寝ると `Bed Occupied` が ON、部屋を出ると `Room Occupied` が OFF になる。ESPHome の `ld2450` コンポーネントのキー名はバージョンで変わることがあるので、コンパイルエラーが出たら公式ドキュメント (esphome.io/components/sensor/ld2450) を正とする。
+
+---
+
+## 11. リポジトリの初期化
 
 ```bash
 cd ~/life-os
@@ -348,13 +402,13 @@ SQLite スキーマ v0 (`src/lifeos/memory/schema.sql`) は概念ドキュメン
 
 - [ ] `nvidia-smi` が Docker 内外で通る、`wpctl status` に入出力が出る
 - [ ] Ollama で 14B / 8B の速度を測り、常駐モデルを決めた
-- [ ] HA が `:8123`、Mosquitto が `:1883`、RuView (sim) が `:3000`、VOICEVOX が `:50021` で動く
+- [ ] HA が `:8123`、VOICEVOX が `:50021` で動く
 - [ ] STT (日 / 英)、TTS (英 / 日) の 3 スクリプトが動く。VRAM 実測値をメモした
 - [ ] `claude -p ... --output-format json` がサブスク認証で通る
 - [ ] Discord から送った文章と写真が PC に届く
 - [ ] Google Calendar から今日の予定が取れ、iPhone にも同じ予定が見える
 - [ ] Meet の 2 トラック録音ができる
-- [ ] ESP32 が届いた: RuView ノードが HA に見える / IR でシーリングライトが消える
+- [ ] ESP32 が届いた: IR でシーリングライトが消える / `Desk Occupied` `Bed Occupied` `Room Occupied` が HA に出て正しく動く
 - [ ] `life-os/` リポジトリを初期化し、秘密情報が `.gitignore` されている
 
-ここまで揃えば Phase 1 (声で照明 + 在室で消灯) に進める。
+ここまで揃えば Phase 1 (声で照明 + 在室で消灯 + 机 / ベッド判定) に進める。
