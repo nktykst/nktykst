@@ -12,13 +12,15 @@
 
 ## 作ったもの
 
-| リポジトリ | 内容 | 技術 |
+コードは順次公開予定です。
+
+| 名前 | 内容 | 技術 |
 |---|---|---|
-| [**seedlint**](https://github.com/nktykst/seedlint) | MLコードの再現性バグを検出するリンター。シード未設定の乱数、`random_state` の付け忘れ、cuDNN の非決定フラグなどを AST の静的解析で見つける。13ルール、テスト50件、CI付き | Python（標準ライブラリのみ） |
-| [**arxseek**](https://github.com/nktykst/arxseek) | オフラインで使える arXiv 論文検索CLI。API クライアント、トークナイザ、転置インデックス、BM25 のランキングまで自作 | Python、SQLite |
-| [**gradient-descent-arena**](https://github.com/nktykst/gradient-descent-arena) | SGD / Momentum / Adam など6つの最適化アルゴリズムが損失地形の上で競走する可視化。[デモ](https://nktykst.github.io/gradient-descent-arena/) | JavaScript、Canvas（単一HTML） |
-| [**comprehension-kit**](https://github.com/nktykst/comprehension-kit) | AIに書かせたコードの「理解負債」を、フックと間隔反復で機械的に返済させる Claude Code 用キット | Python、シェル |
-| [**sitedigest**](https://github.com/nktykst/sitedigest) | 保存したサイトや文書（PDF / Office / HTML）をローカルLLMで分割要約するツール。中断しても続きから再開できる | Python、SQLite |
+| **seedlint** | MLコードの再現性バグを検出するリンター。シード未設定の乱数、`random_state` の付け忘れ、cuDNN の非決定フラグなどを AST の静的解析で見つける。13ルール、テスト50件、CI付き | Python（標準ライブラリのみ） |
+| **arxseek** | オフラインで使える arXiv 論文検索CLI。API クライアント、トークナイザ、転置インデックス、BM25 のランキングまで自作 | Python、SQLite |
+| **gradient-descent-arena** | SGD / Momentum / Adam など6つの最適化アルゴリズムが損失地形の上で競走する可視化 | JavaScript、Canvas（単一HTML） |
+| **comprehension-kit** | AIに書かせたコードの「理解負債」を、フックと間隔反復で機械的に返済させる Claude Code 用キット | Python、シェル |
+| **sitedigest** | 保存したサイトや文書（PDF / Office / HTML）をローカルLLMで分割要約するツール。中断しても続きから再開できる | Python、SQLite |
 
 ## 技術
 
