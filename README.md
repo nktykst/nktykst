@@ -10,18 +10,6 @@
 - **ML研究のためのツール** — 実験の再現性や論文探索など、自分が研究で困ったことを小さなOSSにしています。
 - **LLMを使う開発の仕組みづくり** — AIに書かせたコードを自分で理解し続けるための仕組みや、ローカルLLMでの文書処理ツール。
 
-## 作ったもの
-
-コードは順次公開予定です。
-
-| 名前 | 内容 | 技術 |
-|---|---|---|
-| **seedlint** | MLコードの再現性バグを検出するリンター。シード未設定の乱数、`random_state` の付け忘れ、cuDNN の非決定フラグなどを AST の静的解析で見つける。13ルール、テスト50件、CI付き | Python（標準ライブラリのみ） |
-| **arxseek** | オフラインで使える arXiv 論文検索CLI。API クライアント、トークナイザ、転置インデックス、BM25 のランキングまで自作 | Python、SQLite |
-| **gradient-descent-arena** | SGD / Momentum / Adam など6つの最適化アルゴリズムが損失地形の上で競走する可視化 | JavaScript、Canvas（単一HTML） |
-| **comprehension-kit** | AIに書かせたコードの「理解負債」を、フックと間隔反復で機械的に返済させる Claude Code 用キット | Python、シェル |
-| **sitedigest** | 保存したサイトや文書（PDF / Office / HTML）をローカルLLMで分割要約するツール。中断しても続きから再開できる | Python、SQLite |
-
 ## 技術
 
 - **言語** — Python（メイン）、TypeScript、Swift、C、Rust（学習中）
