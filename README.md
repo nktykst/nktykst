@@ -1,55 +1,37 @@
-<h1 align="center">Yukisato Nakata</h1>
+# Yukisato Nakata
 
-<p align="center">
-  <a href="https://github.com/nktykst">
-    <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=400&size=20&pause=900&color=6E7681&center=true&vCenter=true&width=460&lines=Machine+Learning+Researcher;Deep+Learning+%2F+Paper+Implementation;Building+with+VS+Code+%2B+uv" alt="typing"/>
-  </a>
-</p>
+**機械学習を学んでいる学生です。生体信号（睡眠）データの機械学習と、ML研究を楽にするツールづくりをしています。**
 
-<p align="center">
-  <a href="mailto:nktykst@gmail.com">
-    <img src="https://img.shields.io/badge/Email-nktykst%40gmail.com-555?style=flat-square&labelColor=333" alt="email"/>
-  </a>
-  <a href="https://github.com/nktykst">
-    <img src="https://img.shields.io/github/followers/nktykst?style=flat-square&label=Follow&labelColor=333&color=555" alt="followers"/>
-  </a>
-</p>
+*ML student working on sleep / biosignal modeling, and building small tools that make ML research less painful.*
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-555?style=flat-square&logo=python&logoColor=white&labelColor=333" alt="Python"/>
-  <img src="https://img.shields.io/badge/PyTorch-555?style=flat-square&logo=pytorch&logoColor=white&labelColor=333" alt="PyTorch"/>
-  <img src="https://img.shields.io/badge/NumPy-555?style=flat-square&logo=numpy&logoColor=white&labelColor=333" alt="NumPy"/>
-  <img src="https://img.shields.io/badge/pandas-555?style=flat-square&logo=pandas&logoColor=white&labelColor=333" alt="pandas"/>
-  <img src="https://img.shields.io/badge/JavaScript-555?style=flat-square&logo=javascript&logoColor=white&labelColor=333" alt="JavaScript"/>
-  <img src="https://img.shields.io/badge/TypeScript-555?style=flat-square&logo=typescript&logoColor=white&labelColor=333" alt="TypeScript"/>
-  <img src="https://img.shields.io/badge/Jupyter-555?style=flat-square&logo=jupyter&logoColor=white&labelColor=333" alt="Jupyter"/>
-  <img src="https://img.shields.io/badge/uv-555?style=flat-square&logo=uv&logoColor=white&labelColor=333" alt="uv"/>
-  <img src="https://img.shields.io/badge/VS%20Code-555?style=flat-square&logo=visualstudiocode&logoColor=white&labelColor=333" alt="VS Code"/>
-  <img src="https://img.shields.io/badge/Git-555?style=flat-square&logo=git&logoColor=white&labelColor=333" alt="Git"/>
-</p>
+## やっていること
 
-<p align="center">
-  <sub>機械学習/個人開発をしています · 深層学習 / 論文実装 · VS&nbsp;Code&nbsp;+&nbsp;uv</sub>
-</p>
+- **生体信号 × 機械学習** — 心拍や脳波などの時系列データから睡眠段階を判定するモデルの開発と、その学習・評価パイプラインの整備（Python / C / Swift）。研究に関わるコードは非公開です。
+- **ML研究のためのツール** — 実験の再現性や論文探索など、自分が研究で困ったことを小さなOSSにしています。
+- **LLMを使う開発の仕組みづくり** — AIに書かせたコードを自分で理解し続けるための仕組みや、ローカルLLMでの文書処理ツール。
+
+## 作ったもの
+
+| リポジトリ | 内容 | 技術 |
+|---|---|---|
+| [**seedlint**](https://github.com/nktykst/seedlint) | MLコードの再現性バグを検出するリンター。シード未設定の乱数、`random_state` の付け忘れ、cuDNN の非決定フラグなどを AST の静的解析で見つける。13ルール、テスト50件、CI付き | Python（標準ライブラリのみ） |
+| [**arxseek**](https://github.com/nktykst/arxseek) | オフラインで使える arXiv 論文検索CLI。API クライアント、トークナイザ、転置インデックス、BM25 のランキングまで自作 | Python、SQLite |
+| [**gradient-descent-arena**](https://github.com/nktykst/gradient-descent-arena) | SGD / Momentum / Adam など6つの最適化アルゴリズムが損失地形の上で競走する可視化。[デモ](https://nktykst.github.io/gradient-descent-arena/) | JavaScript、Canvas（単一HTML） |
+| [**comprehension-kit**](https://github.com/nktykst/comprehension-kit) | AIに書かせたコードの「理解負債」を、フックと間隔反復で機械的に返済させる Claude Code 用キット | Python、シェル |
+| [**sitedigest**](https://github.com/nktykst/sitedigest) | 保存したサイトや文書（PDF / Office / HTML）をローカルLLMで分割要約するツール。中断しても続きから再開できる | Python、SQLite |
+
+## 技術
+
+- **言語** — Python（メイン）、TypeScript、Swift、C、Rust（学習中）
+- **ML** — PyTorch、NumPy、pandas、scikit-learn
+- **環境** — uv、Nix、Git / GitHub Actions、Neovim
+
+## 連絡先
+
+nktykst@gmail.com
 
 <br/>
 
-<!--
-  Generated inside GitHub Actions by lowlighter/metrics and committed daily,
-  so private-repo activity is included (no external hosting).
-  Placeholder images are shown until the first Actions run succeeds.
--->
 <p align="center">
-  <img width="78%" src="img/metrics.svg" alt="GitHub metrics"/>
-</p>
-
-<p align="center">
-  <img width="38%" src="img/metrics-languages.svg" alt="Top languages"/>
-</p>
-
-<br/>
-
-<!-- Animated contribution activity graph (public contributions) -->
-<p align="center">
-  <img width="90%" src="https://github-readme-activity-graph.vercel.app/graph?username=nktykst&bg_color=00000000&color=6E7681&line=8B949E&point=6E7681&area=true&area_color=8B949E&hide_border=true&custom_title=Contribution%20Activity" alt="Contribution activity graph"/>
+  <img width="78%" src="img/metrics.svg" alt="GitHub の活動状況（非公開リポジトリを含む）"/>
 </p>
